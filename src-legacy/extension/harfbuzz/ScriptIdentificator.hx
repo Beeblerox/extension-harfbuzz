@@ -41,14 +41,14 @@ class ScriptIdentificator {
 		new UnicodeBlock(0x1EE00, 0x1EEFF, ScriptArabic)
 	];
 	
-	static function getCharCodeScript(utfCharCode : Int) : TextScript {
+	static function getCharCodeScript(utfCharCode:Int):TextScript {
 		for (block in blocks) {
 			if (block.test(utfCharCode))	return block.script;
 		}
 		return ScriptCommon;
 	}
 
-	public static function identify(text : String, preferredScript:String = null) : TextScript {
+	public static function identify(text:String, preferredScript:String = null):TextScript {
 		
 		var scriptsCount = new Map<String, Int>();
 		var utfLen = Utf8.length(text);

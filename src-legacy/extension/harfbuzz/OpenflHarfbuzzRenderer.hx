@@ -2,6 +2,7 @@ package extension.harfbuzz;
 
 import extension.harfbuzz.OpenflHarbuzzCFFI;
 import extension.harfbuzz.TextScript;
+import extension.harfbuzz.TilesRenderer.RenderItem;
 import haxe.Utf8;
 import openfl.display.BitmapData;
 import openfl.display.Sprite;
@@ -10,34 +11,57 @@ import openfl.geom.Rectangle;
 import openfl.Lib;
 import openfl.utils.ByteArray;
 
-class OpenflHarfbuzzRenderer {
+@:publicFields
+class RenderData
+{
+	var renderList:Array<RenderItem> = [];
+	var linesLength:Array<Int> = [];
+	var linesWidth:Array<Float> = [];
+	var linesNumber:Int = 0;
+	
+	public function new()
+	{
+		
+	}
+}
 
+class OpenflHarfbuzzRenderer 
+{
+	static dynamic public function getBytes(src:String) 
+	{
+        return openfl.Assets.getBytes(src);
+    }
+	
 	static var harfbuzzIsInited = false;
+	
+	var face:FTFace;
 
-	var direction : TextDirection;
-	var script : TextScript;
-	var language : String;
-	var lineHeight : Float;
-
-	var face : FTFace;
-	var renderer : TilesRenderer;
-	var glyphs : Map<Int, GlyphRect>;
-
+	public var direction(default, null):TextDirection;
+	var script:TextScript;
+	var language:String;
+	
+	public var lineHeight(default, null):Float;
+	
+	public var renderer(default, null):TilesRenderer;
+	
 	public function new(
-			fontName : String,	// Font path or Openfl Asset ID
-			textSize : Int,
-			color: Int,
-			text : String,
-			language : String = "",
-			script : TextScript = null,
-			direction : TextDirection = null) {
+			fontName:String,	// Font path or Openfl Asset ID
+			textSize:Int,
+			color:Int,
+			text:String,
+			language:String = "",
+			script:TextScript = null,
+			direction:TextDirection = null) 
+	{
 
-		if (script==null) {
+		if (script == null) 
+		{
 			script = ScriptIdentificator.identify(text);
 		}
 		this.script = script;
 
-		if (direction==null) {
+		if (direction == null) 
+		{
 			direction = TextScriptTools.isRightToLeft(script) ? RightToLeft : LeftToRight;
 		}
 		this.direction = direction;
@@ -45,51 +69,41 @@ class OpenflHarfbuzzRenderer {
 		this.language = language;
 		this.lineHeight = textSize;
 
-		if (!harfbuzzIsInited) {
+		if (!harfbuzzIsInited) 
+		{
 			OpenflHarbuzzCFFI.init();
 			harfbuzzIsInited = true;
 		}
 
-		if (sys.FileSystem.exists(fontName)) {
+		if (sys.FileSystem.exists(fontName)) 
+		{
 			face = OpenflHarbuzzCFFI.loadFontFaceFromFile(fontName);
-		} else {
+		} 
+		else
+		{
 			#if (!openfl_next)
-			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(openfl.Assets.getBytes(fontName).getData());
+		//	face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(com.nevosoft.isoframework.ResourceManager.instance.getBytes(fontName).getData());
+		//	face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(openfl.Assets.getBytes(fontName).getData());
+			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName).getData());
 			#else
-			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(openfl.Assets.getBytes(fontName));
+		//	face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(openfl.Assets.getBytes(fontName));
+			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName));
 			#end
 		}
 
 		OpenflHarbuzzCFFI.setFontSize(face, textSize);
-
-		var glyphAtlasResult = OpenflHarbuzzCFFI.createGlyphAtlas(face, createBuffer(text));
-		var glyphsBmp = new BitmapData(glyphAtlasResult.width, glyphAtlasResult.height);
-
-		var rect = new Rectangle(0, 0, glyphsBmp.width, glyphsBmp.height);
-		glyphsBmp.setVector(rect, glyphAtlasResult.bmpData);
-		var ct = new openfl.geom.ColorTransform(
-			((color>>16)&0xff)/255.0,
-			((color>>8)&0xff)/255.0,
-			(color&0xff)/255.0,
-			1,0,0,0,0);
-		glyphsBmp.colorTransform(rect, ct);
-
-		glyphs = new Map();
-		var glyphsRects = new Array<{ codepoint : Int, rect : Rectangle }>();
-		for (rect in glyphAtlasResult.glyphRects) {
-			glyphs[rect.codepoint] = rect;
-			glyphsRects.push({ codepoint : rect.codepoint, rect : new Rectangle(rect.x, rect.y, rect.width, rect.height) });
-		}
-
-		renderer = new TilesRenderer(glyphsBmp, glyphsRects);
-
+		
+		var glyphData = OpenflHarbuzzCFFI.createGlyphData(face, createBuffer(text));
+		renderer = new TilesRenderer(glyphData, 1024, color);
 	}
 
-	function createBuffer(text : String) : HBBuffer {
+	function createBuffer(text:String):HBBuffer 
+	{
 		return OpenflHarbuzzCFFI.createBuffer(direction, script, language, text);
 	}
 
-	function isPunctuation(char:String) {
+	function isPunctuation(char:String) 
+	{
 		return
 			char == '.' ||
 			char == ',' ||
@@ -103,99 +117,124 @@ class OpenflHarfbuzzRenderer {
 			char == ')';
 	}
 
-
-	private function isSpace(i:Int){
+	private function isSpace(i:Int)
+	{
 		return i==9 || i==10 || i==11 || i==12 || i==13 || i==32;
 	}
 
 	// Splits text into words containging the trailing spaces ("a b c"=["a ", "b ", "c "])
-	function split(text : String) : Array<String> {
+	function split(text:String) : Array<String> 
+	{
 		var ret = [];
 		var currentWord:Utf8 = null;
 		var l:Int = Utf8.length(text);
-		Utf8.iter(text,function(cCode:Int){
-			if (cCode==13) return;
-			if (isSpace(cCode)) {
-				if(currentWord != null) ret.push(currentWord.toString());
+		Utf8.iter(text, function(cCode:Int)
+		{
+			if (cCode == 13) return;
+			if (isSpace(cCode)) 
+			{
+				if (currentWord != null) ret.push(currentWord.toString());
 				currentWord = new Utf8();
 				currentWord.addChar(cCode);
 				ret.push(currentWord.toString());
 				currentWord = null;
 				return;
 			}
-			if(currentWord==null) currentWord = new Utf8();
+			
+			if (currentWord == null) currentWord = new Utf8();
 			currentWord.addChar(cCode);
 		});
-		if (currentWord != null) {
+		if (currentWord != null) 
+		{
 			ret.push(currentWord.toString());
 		}
 		return ret;
 	}
 
-	function layouWidth(layout : Array<PosInfo>) : Float {
+	function layoutWidth(layout:Array<PosInfo>, fontScale:Float = 1.0, letterSpacing:Float = 0.0):Float 
+	{
 		var xPos = 0.0;
-		for (posInfo in layout) {
-			xPos += posInfo.advance.x / (100/64);	// 100/64 = 1.5625 = Magic!
+		for (posInfo in layout) 
+		{
+			xPos += posInfo.advance.x / (100 / 64) * fontScale + letterSpacing;	// 100/64 = 1.5625 = Magic!
 		}
 		return xPos;
 	}
 
-	function isEndOfLine(xPos : Float, wordWidth : Float, lineWidth : Float) {
-		if (direction == LeftToRight) {
-			return (xPos>0.0 && xPos+wordWidth>lineWidth);
-		} else {	// RightToLeft
-			return (xPos<lineWidth&& xPos-wordWidth<0.0);
+	function isEndOfLine(xPos:Float, wordWidth:Float, lineWidth:Float) 
+	{
+		if (lineWidth <= 0) return false;
+		
+		if (direction == LeftToRight) 
+		{
+			return (xPos > 0.0 && xPos + wordWidth > lineWidth);
+		} 
+		else 
+		{	// RightToLeft
+			return (xPos < lineWidth && xPos - wordWidth < 0.0);
 		}
 	}
 
-	private function invertString(s:String):String{
+	private function invertString(s:String):String
+	{
 		var l:Int = Utf8.length(s);
 		var res:Utf8 = new Utf8();
-		for(i in -l+1...1) res.addChar(Utf8.charCodeAt(s,-i));
+		for (i in -l + 1...1) res.addChar(Utf8.charCodeAt(s, -i));
 		return res.toString();
 	}
 
 	// if "text" is in RtoL script, invert non-RtoL substrings
-	function preProcessText(text : String) {
+	function preProcessText(text:String) 
+	{
 		var isRtoL:Bool = TextScriptTools.isRightToLeft(script);
-
 		var res:StringBuf = new StringBuf();
 		var char:String = '';
 		var phrase:String = '';
 		var spaces:String = '';
 		var word:String = '';
-		var length:Int = text.length;
+		var length:Int = Utf8.length(text);
 
-		for(i in 0 ... length){
-			char = text.charAt(i);
-			if(char=="\r") continue;
-			if(isPunctuation(char) || StringTools.isSpace(text,i)) {
-				if(word == '') {
+		for (i in 0...length)
+		{
+			char = Utf8.sub(text, i, 1);
+			if (char=="\r") continue;
+			if (isPunctuation(char) || StringTools.isSpace(text, i)) 
+			{
+				if (word == '') 
+				{
 					spaces += char;
 					continue;
 				}
-				if(char == "\n" || TextScriptTools.isRightToLeft(ScriptIdentificator.identify(word,script)) == isRtoL){
+				if (char == "\n" || TextScriptTools.isRightToLeft(ScriptIdentificator.identify(word, script)) == isRtoL)
+				{
 					res.add(invertString(phrase));
 					res.add(spaces);
 					res.add(word);
 					res.add(char);
 					spaces = phrase = word = '';
-				} else {
-					if(phrase == '') {
+				} 
+				else 
+				{
+					if (phrase == '') 
+					{
 						res.add(spaces);
 						spaces = '';
 					}
+					
 					phrase += spaces+word;
 					word = '';
 					spaces = char;
 				}
+				
 				continue;
 			}
-			word+=char;
+			
+			word += char;
 		}
 
-		if(word != '' && TextScriptTools.isRightToLeft(ScriptIdentificator.identify(word,script)) != isRtoL) {
-			phrase += spaces+word;
+		if (word != '' && TextScriptTools.isRightToLeft(ScriptIdentificator.identify(word, script)) != isRtoL) 
+		{
+			phrase += spaces + word;
 			spaces = word = '';
 		}
 		res.add(invertString(phrase));
@@ -203,77 +242,142 @@ class OpenflHarfbuzzRenderer {
 		res.add(word);
 		return res.toString();
 	}
-
-	public function renderText(text : String, lineWidth : Float) : HarfbuzzSprite {
-
+	
+	// added support for autosized fields (if fieldWidth <= 0)
+	// TODO: check letter spacing support
+	public function layoutText(text:String, renderData:RenderData, fieldWidth:Float = 0.0, fontScale:Float = 1.0, letterSpacing:Float = 0.0):RenderData
+	{
 		text = preProcessText(text);
 
-		var renderList = new Array<{ codepoint : Int, x : Float, y : Float }>();
+		var renderList = renderData.renderList;
+		var linesLength:Array<Int> = renderData.linesLength;
+		var linesWidth:Array<Float> = renderData.linesWidth;
+		var linesNumber:Int = 1;
+
 		var words = split(text);
 
-		var lineNumber : Int = 1;
-		var maxLineWidth = 400;
+		var lineXStart = (direction == LeftToRight) ? 0.0 : fieldWidth;
+		var xPosBase:Float = lineXStart;
+		var yPosBase:Float = linesNumber * lineHeight * fontScale;
+		var lineWidth:Float = 0.0;
+		var lineLength:Int = 0;
 
-		var lineXStart = direction==LeftToRight ? 0.0 : lineWidth;
-		var xPosBase : Float = lineXStart;
-		var yPosBase : Float = lineNumber*lineHeight;
-
-		for (word in words) {
+		for (word in words) 
+		{
 			var renderedWord = OpenflHarbuzzCFFI.layoutText(face, createBuffer(word));
-			var wordWidth = layouWidth(renderedWord);
+			var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
 
-			if (word == "\n" || isEndOfLine(xPosBase, wordWidth, lineWidth)) {
+			if (word == "\n" || isEndOfLine(xPosBase, wordWidth, fieldWidth)) 
+			{
+				linesWidth[linesNumber - 1] = lineWidth;
+				linesLength[linesNumber - 1] = lineLength;
+
 				// Newline
-				lineNumber++;
+				linesNumber++;
 				xPosBase = lineXStart;
-				yPosBase = lineNumber*lineHeight;
-				if(StringTools.isSpace(word,0)) continue;
+				yPosBase = linesNumber * lineHeight * fontScale;
+
+				lineWidth = 0;
+				lineLength = 0;
+				if (StringTools.isSpace(word, 0)) continue;
 			}
 
 			var xPos = xPosBase;
-			if (direction==RightToLeft)	xPos-=wordWidth;
+			if (direction == RightToLeft) xPos -= wordWidth;
 			var yPos = yPosBase;
 
-			for (posInfo in renderedWord) {
-
-				var g = glyphs[posInfo.codepoint];
-				if(g==null) {
-					trace("WOW! I'm missing a glyph for the following word: "+word);
+			for (posInfo in renderedWord) 
+			{
+				var g = renderer.glyphs[posInfo.codepoint];
+				if (g == null)
+				{
+					renderer.addGlyphs(OpenflHarbuzzCFFI.createGlyphData(face, createBuffer(word)));
+				}
+				
+				g = renderer.glyphs[posInfo.codepoint];
+				if (g == null) 
+				{
+#if debug
+					trace("WOW! I'm missing a glyph for the following word: " + word);
 					trace("This should not be happening! Your text will be renderer badly :(");
-					trace("CODEPINT "+posInfo.codepoint);
+					trace("CODEPINT " + posInfo.codepoint);
 					trace(posInfo);
+#end
 					continue;
 				}
-				var dstX = Std.int(xPos + posInfo.offset.x + g.bitmapLeft);
-				var dstY = Std.int(yPos + posInfo.offset.y - g.bitmapTop);
-				var avanceX = posInfo.advance.x / (100/64); // 100/64 = 1.5625 = Magic!
-				var avanceY = posInfo.advance.y / (100/64);
 
-				if (xPos+avanceX>=lineWidth && direction==LeftToRight) {
+				var dstX = /*Std.int*/(xPos + (posInfo.offset.x + g.bitmapLeft) * fontScale);
+				var dstY = /*Std.int*/(yPos + (posInfo.offset.y - g.bitmapTop) * fontScale);
+				var avanceX = posInfo.advance.x / (100 / 64) * fontScale; // 100/64 = 1.5625 = Magic!
+				var avanceY = posInfo.advance.y / (100 / 64) * fontScale;
+
+				if (xPos + avanceX >= fieldWidth && direction == LeftToRight) 
+				{
+					linesWidth[linesNumber - 1] = lineWidth;
+					linesLength[linesNumber - 1] = lineLength;
+
 					// Newline
-					lineNumber++;
+					linesNumber++;
 					xPos = 0;
-					yPos = lineNumber*lineHeight;
-					dstX = Std.int(xPos + posInfo.offset.x + g.bitmapLeft);
-					dstY = Std.int(yPos + posInfo.offset.y - g.bitmapTop);
+					yPos = linesNumber * lineHeight * fontScale;
+					dstX = /*Std.int*/(xPos + (posInfo.offset.x + g.bitmapLeft) * fontScale);
+					dstY = /*Std.int*/(yPos + (posInfo.offset.y - g.bitmapTop) * fontScale);
+
+					lineWidth = 0;
+					lineLength = 0;
 				}
 
-				renderList.push({ codepoint : g.codepoint, x : dstX, y : dstY });
+				renderList.push(new RenderItem(g.codepoint, dstX, dstY));
+				lineLength++;
 
-				xPos += avanceX;
+				xPos += avanceX + letterSpacing;
 				yPos += avanceY;
 			}
 
-			if (direction==LeftToRight) {
+			if (direction == LeftToRight) 
+			{
 				xPosBase += wordWidth;
-			} else {
+			} 
+			else 
+			{
 				xPosBase -= wordWidth;
 			}
-
+			
+			lineWidth += wordWidth;
 		}
 
-		return renderer.render(lineWidth, (lineNumber)*lineHeight, renderList);
+		// flush everything that left
+		linesWidth[linesNumber - 1] = lineWidth;
+		linesLength[linesNumber - 1] = lineLength;	
+		renderData.linesNumber = linesNumber;
 
+		if (direction != LeftToRight && fieldWidth <= 0)
+		{
+			var maxLineWidth = linesWidth[0];
+			for (i in 1...linesWidth.length)
+			{
+				maxLineWidth = Math.max(maxLineWidth, linesWidth[i]);
+			}
+			
+			for (renderItem in renderData.renderList)
+			{
+				renderItem.x += maxLineWidth;
+			}
+		}
+
+		return renderData;
 	}
 
+	public function renderText(text:String, lineWidth:Float = 400):HarfbuzzSprite 
+	{
+		var renderData = new RenderData();
+	//	layoutText(text, 0.5, lineWidth, renderData);
+		layoutText(text, renderData, lineWidth, 1.0, 0.0);
+		
+		/*trace("renderData.linesNumber: " + renderData.linesNumber);
+		trace("renderData.linesLength: " + renderData.linesLength);
+		trace("renderData.linesWidth: " + renderData.linesWidth);*/
+		
+		return renderer.render(lineWidth, renderData.linesNumber * lineHeight, renderData.renderList);
+	}
 }

@@ -16,11 +16,20 @@ typedef GlyphRect = {
 	advanceX : Float
 }
 
+typedef GlyphRectData = {
+	glyphRect:GlyphRect,
+	bmpData:Array<Int>
+}
+
 typedef GlyphAtlas = {
-	width : Int,
-	height : Int,
-	bmpData : Array<Int>,
-	glyphRects : Array<GlyphRect>
+	width:Int,
+	height:Int,
+	bmpData:Array<Int>,
+	glyphRects:Array<GlyphRect>,
+}
+
+typedef GlyphData = {
+	glyphData:Array<GlyphRectData>
 }
 
 typedef Point = {
@@ -55,6 +64,7 @@ class OpenflHarbuzzCFFI {
 	@CPP public static function setFontSize(face : FTFace, size : Int) : Void;
 	@CPP public static function createBuffer(direction : TextDirection, script : TextScript, language : String, text : String) : HBBuffer;
 	@CPP public static function createGlyphAtlas(face : FTFace, buffer : HBBuffer) : GlyphAtlas;
+	@CPP public static function createGlyphData(face : FTFace, buffer : HBBuffer) : GlyphData;
 	@CPP public static function layoutText(face : FTFace, buffer : HBBuffer) : Array<PosInfo>;
 	@CPP public static function getFaceMetrics(face : FTFace) : FaceMetrics;
 

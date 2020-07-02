@@ -254,7 +254,124 @@ namespace openfl_harfbuzz {
 		alloc_field(obj, val_id("glyphRects"), glyphRects);
 
 		return obj;
+	}
+	
+	value createGlyphData(FT_Face *face, hb_buffer_t *buffer)
+	{
+		//hb_font_t *hbFont = hb_ft_font_create(*face, NULL);
+		hb_font_t *hbFont = hb_ft_font_create_cached(*face);
 
+		hb_shape(hbFont, buffer, NULL, 0);
+
+		unsigned int glyph_count;
+		hb_glyph_info_t *glyph_info = hb_buffer_get_glyph_infos(buffer, &glyph_count);
+
+		// First pass, get glyphs sizes
+		int maxGlyphWidth = -1;
+		int maxGlyphHeight = -1;
+		set<int> glyphsCodepoints;
+		int uniqueGlyphs = 0;
+		for (int i = 0; i<glyph_count; i++) {
+
+			int codepoint = glyph_info[i].codepoint;
+
+			if (glyphsCodepoints.find(codepoint)!=glyphsCodepoints.end()) {
+				//printf("Glyph code=%i was already loaded.\n", codepoint);
+				continue;
+			}
+
+			if (FT_Load_Glyph(*face, codepoint, FT_LOAD_RENDER)!=FT_Err_Ok) {
+				printf("FT_Load_Glyph error, codepoint=%i\n", codepoint);
+			}
+
+			glyphsCodepoints.insert(codepoint);
+			++uniqueGlyphs;
+
+			maxGlyphWidth = max(maxGlyphWidth, (*face)->glyph->bitmap.width);
+			maxGlyphHeight = max(maxGlyphHeight, (*face)->glyph->bitmap.rows);
+
+		}
+
+		maxGlyphWidth+=2;	// Margin
+		maxGlyphHeight+=2;	// Margin
+
+		int rowCols = ceil(sqrt(static_cast<double>(uniqueGlyphs)));
+		int minBmpWidth = rowCols*maxGlyphWidth;
+		int minBmpHeight = rowCols*maxGlyphHeight;
+
+		/*int bmpWidth = 1;
+		while (bmpWidth<minBmpWidth) bmpWidth*=2;
+		int bmpHeight = 1;
+		while (bmpHeight<minBmpHeight) bmpHeight*=2;*/
+
+		// hxcffi vars
+		value obj = alloc_empty_object();
+	//	value glyphAtlas = alloc_array(bmpWidth*bmpHeight);
+		value glyphData = alloc_array(uniqueGlyphs);
+
+		// Second pass, render glyphs to atlas
+		int xPos = 0;
+		int yPos = 0;
+		int glyphIndex = 0;
+
+		set<int>::iterator iter;
+		for (iter=glyphsCodepoints.begin(); iter!=glyphsCodepoints.end(); ++iter) {
+
+			int codepoint = *iter;
+
+			if (FT_Load_Glyph(*face, codepoint, FT_LOAD_RENDER)!=FT_Err_Ok) {
+				printf("FT_Load_Glyph error, codepoint=%i\n", codepoint);
+			}
+
+			FT_Bitmap glyphBmp;
+			FT_GlyphSlot ftGlyphRect = (*face)->glyph;
+			FT_Bitmap_New(&glyphBmp);
+			FT_Bitmap_Convert(library, &(ftGlyphRect->bitmap), &glyphBmp, 1);
+			
+			value glyphAtlas = alloc_array(glyphBmp.width * glyphBmp.rows);
+
+			for (int yGlyph=0; yGlyph<glyphBmp.rows; ++yGlyph) {
+				for (int xGlyph=0; xGlyph<glyphBmp.width; ++xGlyph) {
+
+					unsigned char srcPix = glyphBmp.buffer[yGlyph * glyphBmp.width + xGlyph];
+					int dstPos = (yPos+yGlyph) * glyphBmp.width + (xPos + xGlyph);
+
+					// hxcffi
+					val_array_set_i(glyphAtlas, dstPos, alloc_int((srcPix<<24)|0xffffff));
+
+				}
+			}
+
+			// hxcffi
+			value glyphRect = alloc_empty_object();
+			alloc_field(glyphRect, val_id("codepoint"), alloc_int(codepoint));
+			alloc_field(glyphRect, val_id("x"), alloc_int(xPos));
+			alloc_field(glyphRect, val_id("y"), alloc_int(yPos));
+			alloc_field(glyphRect, val_id("width"), alloc_int(glyphBmp.width));
+			alloc_field(glyphRect, val_id("height"), alloc_int(glyphBmp.rows));
+			alloc_field(glyphRect, val_id("bitmapLeft"), alloc_int(ftGlyphRect->bitmap_left));
+			alloc_field(glyphRect, val_id("bitmapTop"), alloc_int(ftGlyphRect->bitmap_top));
+			alloc_field(glyphRect, val_id("advanceX"), alloc_float(to_float(ftGlyphRect->metrics.horiAdvance)));
+			alloc_field(glyphRect, val_id("bearingX"), alloc_float(to_float(ftGlyphRect->metrics.horiBearingX)));
+			alloc_field(glyphRect, val_id("bearingY"), alloc_float(to_float(ftGlyphRect->metrics.horiBearingY)));
+		//	val_array_set_i(glyphRects, glyphIndex, glyphRect);
+			
+			value glyphRectData = alloc_empty_object();
+			alloc_field(glyphRectData, val_id("glyphRect"), glyphRect);
+			alloc_field(glyphRectData, val_id("bmpData"), glyphAtlas);
+			val_array_set_i(glyphData, glyphIndex, glyphRectData);
+
+			FT_Bitmap_Done(library, &glyphBmp);
+
+			++glyphIndex;
+		}
+
+		//hb_font_destroy(hbFont);
+
+		// hxcffi
+		alloc_field(obj, val_id("glyphData"), glyphData);
+
+		return obj;
 	}
 
 	/**

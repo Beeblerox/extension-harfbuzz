@@ -106,6 +106,13 @@ static value openfl_harfbuzz_createGlyphAtlas(value faceHandle, value bufferHand
 }
 DEFINE_PRIM(openfl_harfbuzz_createGlyphAtlas, 2);
 
+static value openfl_harfbuzz_createGlyphData(value faceHandle, value bufferHandle) {
+	FT_Face *face = (FT_Face*)(intptr_t)val_float(faceHandle);
+	hb_buffer_t *buffer = (hb_buffer_t *)(intptr_t)val_float(bufferHandle);
+	return createGlyphData(face, buffer);
+}
+DEFINE_PRIM(openfl_harfbuzz_createGlyphData, 2);
+
 static value openfl_harfbuzz_layoutText(value faceHandle, value bufferHandle) {
 	FT_Face *face = (FT_Face*)(intptr_t)val_float(faceHandle);
 	hb_buffer_t *buffer = (hb_buffer_t *)(intptr_t)val_float(bufferHandle);
