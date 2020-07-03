@@ -37,8 +37,9 @@ class OpenflHarfbuzzRenderer
 	var face:FTFace;
 
 	public var direction(default, null):TextDirection;
-	var script:TextScript;
-	var language:String;
+	public var script(default, null):TextScript;
+	public var language(default, null):String;
+	public var fontName(default, null):String;
 	
 	public var lineHeight(default, null):Float;
 	
@@ -75,6 +76,8 @@ class OpenflHarfbuzzRenderer
 			harfbuzzIsInited = true;
 		}
 
+		this.fontName = fontName;
+
 		if (sys.FileSystem.exists(fontName)) 
 		{
 			face = OpenflHarbuzzCFFI.loadFontFaceFromFile(fontName);
@@ -82,19 +85,27 @@ class OpenflHarfbuzzRenderer
 		else
 		{
 			#if (!openfl_next)
-		//	face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(com.nevosoft.isoframework.ResourceManager.instance.getBytes(fontName).getData());
-		//	face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(openfl.Assets.getBytes(fontName).getData());
 			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName).getData());
 			#else
-		//	face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(openfl.Assets.getBytes(fontName));
 			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName));
 			#end
 		}
 
 		OpenflHarbuzzCFFI.setFontSize(face, textSize);
-		
+
 		var glyphData = OpenflHarbuzzCFFI.createGlyphData(face, createBuffer(text));
 		renderer = new TilesRenderer(glyphData, 1024, color);
+	}
+	
+	public function cleanup():Void
+	{
+		if (renderer != null)
+		{
+			renderer.cleanup();
+		}
+
+		renderer = null;
+		face = null;
 	}
 
 	function createBuffer(text:String):HBBuffer 
@@ -244,7 +255,6 @@ class OpenflHarfbuzzRenderer
 	}
 	
 	// added support for autosized fields (if fieldWidth <= 0)
-	// TODO: check letter spacing support
 	public function layoutText(text:String, renderData:RenderData, fieldWidth:Float = 0.0, fontScale:Float = 1.0, letterSpacing:Float = 0.0):RenderData
 	{
 		text = preProcessText(text);

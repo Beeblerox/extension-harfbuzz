@@ -56,6 +56,26 @@ class TilesRenderer
 		addGlyphs(glyphData);
 	}
 	
+	public function cleanup():Void
+	{
+		if (atlas != null)
+		{
+			atlas.cleanup();
+		}
+
+		if (atlasBmp != null)
+		{
+			atlasBmp.dispose();
+		}
+
+		glyphs = null;
+		tilesheet = null;
+		glyphIds = null;
+		atlas = null;
+		atlasBmp = null;
+		blitList = null;
+	}
+	
 	public function addGlyphs(glyphData:GlyphData)
 	{
 		var ct = new openfl.geom.ColorTransform(
@@ -108,7 +128,6 @@ class TilesRenderer
 			blitList.push(g.x);
 			blitList.push(g.y);
 			blitList.push(glyphIds[g.codepoint]);
-		//	blitList.push(0.5);
 			blitList.push(1);
 			blitList.push(1);
 			blitList.push(1);
@@ -120,7 +139,7 @@ class TilesRenderer
 		}
 
 		var spr = new HarfbuzzSprite(textWidth, textHeight + minY, minX, minY, maxX, maxY);
-		tilesheet.drawTiles(spr.graphics, blitList, true, Graphics.TILE_RGB /*| Graphics.TILE_SCALE*/);
+		tilesheet.drawTiles(spr.graphics, blitList, true, Graphics.TILE_RGB);
 		return spr;
 	}
 }
