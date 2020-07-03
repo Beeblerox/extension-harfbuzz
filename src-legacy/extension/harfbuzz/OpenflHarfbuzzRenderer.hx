@@ -308,10 +308,11 @@ class OpenflHarfbuzzRenderer
 
 				var dstX = /*Std.int*/(xPos + (posInfo.offset.x + g.bitmapLeft) * fontScale);
 				var dstY = /*Std.int*/(yPos + (posInfo.offset.y - g.bitmapTop) * fontScale);
+
 				var avanceX = posInfo.advance.x / (100 / 64) * fontScale; // 100/64 = 1.5625 = Magic!
 				var avanceY = posInfo.advance.y / (100 / 64) * fontScale;
 
-				if (xPos + avanceX >= fieldWidth && direction == LeftToRight) 
+				if (fieldWidth > 0 && xPos + avanceX >= fieldWidth && direction == LeftToRight) 
 				{
 					linesWidth[linesNumber - 1] = lineWidth;
 					linesLength[linesNumber - 1] = lineLength;
