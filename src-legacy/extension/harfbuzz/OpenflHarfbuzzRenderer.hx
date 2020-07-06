@@ -84,11 +84,11 @@ class OpenflHarfbuzzRenderer
 		} 
 		else
 		{
-			#if (!openfl_next)
+		//	#if (!openfl_next)
 			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName).getData());
-			#else
-			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName));
-			#end
+		//	#else
+		//	face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName));
+		//	#end
 		}
 
 		OpenflHarbuzzCFFI.setFontSize(face, textSize);
