@@ -19,6 +19,9 @@ class RenderData
 	var linesWidth:Array<Float> = [];
 	var linesNumber:Int = 0;
 	
+	var colors:Array<Int>;
+	var colored:Bool = false;
+	
 	public function new()
 	{
 		
@@ -134,31 +137,76 @@ class OpenflHarfbuzzRenderer
 	}
 
 	// Splits text into words containging the trailing spaces ("a b c"=["a ", "b ", "c "])
-	function split(text:String) : Array<String> 
+	function split(text:String, letterColors:Array<Int>, resColors:Array<Int>):Array<String> 
 	{
 		var ret = [];
 		var currentWord:Utf8 = null;
 		var l:Int = Utf8.length(text);
+		
+		var genColors:Bool = (letterColors.length > 0);
+		var currentWordColors:Array<Int> = null;
+		var colorIndex:Int = -1;
+		
 		Utf8.iter(text, function(cCode:Int)
 		{
+			colorIndex++;
+			
 			if (cCode == 13) return;
 			if (isSpace(cCode)) 
 			{
-				if (currentWord != null) ret.push(currentWord.toString());
+				if (currentWord != null) 
+				{
+					ret.push(currentWord.toString());
+					
+					if (genColors)
+					{
+						addColorsFrom(resColors, currentWordColors);
+					}
+				}
+				
 				currentWord = new Utf8();
 				currentWord.addChar(cCode);
 				ret.push(currentWord.toString());
 				currentWord = null;
+				
+				if (genColors)
+				{
+					currentWordColors = [];
+					addColor(currentWordColors, letterColors[colorIndex]);
+					addColorsFrom(resColors, currentWordColors);
+					currentWordColors = null;
+				}
+				
 				return;
 			}
 			
-			if (currentWord == null) currentWord = new Utf8();
+			if (currentWord == null) 
+			{
+				currentWord = new Utf8();
+				
+				if (genColors)
+				{
+					currentWordColors = [];
+				}
+			}
+			
 			currentWord.addChar(cCode);
+			
+			if (genColors)
+			{
+				addColor(currentWordColors, letterColors[colorIndex]);
+			}
 		});
 		if (currentWord != null) 
 		{
 			ret.push(currentWord.toString());
+			
+			if (genColors)
+			{
+				addColorsFrom(resColors, currentWordColors);
+			}
 		}
+		
 		return ret;
 	}
 
@@ -193,9 +241,30 @@ class OpenflHarfbuzzRenderer
 		for (i in -l + 1...1) res.addChar(Utf8.charCodeAt(s, -i));
 		return res.toString();
 	}
+	
+	private inline function invertArray(arr:Array<Int>):Array<Int>
+	{
+		var l:Int = arr.length;
+		var res:Array<Int> = [];
+		for (i in (-l + 1)...1) res.push(arr[-i]);
+		return res;
+	}
+	
+	private function addColorsFrom(to:Array<Int>, from:Array<Int>):Void
+	{
+		for (i in 0...from.length)
+		{
+			to.push(from[i]);
+		}
+	}
+	
+	private function addColor(to:Array<Int>, color:Int):Void
+	{
+		to.push(color);
+	}
 
 	// if "text" is in RtoL script, invert non-RtoL substrings
-	function preProcessText(text:String) 
+	function preProcessText(text:String, letterColors:Array<Int>, resColors:Array<Int>) 
 	{
 		var isRtoL:Bool = TextScriptTools.isRightToLeft(script);
 		var res:StringBuf = new StringBuf();
@@ -205,24 +274,56 @@ class OpenflHarfbuzzRenderer
 		var word:String = '';
 		var length:Int = Utf8.length(text);
 
+		var genColors:Bool = (letterColors != null && resColors != null);
+		var charColor:Int = 0xffffff;
+		var spacesColors:Array<Int> = [];
+		var wordColors:Array<Int> = [];
+		var phraseColors:Array<Int> = [];
+
 		for (i in 0...length)
 		{
 			char = Utf8.sub(text, i, 1);
-			if (char=="\r") continue;
+			
+			if (genColors) 
+			{
+				charColor = letterColors[i];
+			}
+			
+			if (char == "\r") continue;
 			if (isPunctuation(char) || StringTools.isSpace(text, i)) 
 			{
 				if (word == '') 
 				{
 					spaces += char;
+					
+					if (genColors) 
+					{
+						addColor(spacesColors, charColor);
+					}
+					
 					continue;
 				}
+				
 				if (char == "\n" || TextScriptTools.isRightToLeft(ScriptIdentificator.identify(word, script)) == isRtoL)
 				{
 					res.add(invertString(phrase));
 					res.add(spaces);
 					res.add(word);
 					res.add(char);
+					
 					spaces = phrase = word = '';
+					
+					if (genColors) 
+					{
+						addColorsFrom(resColors, invertArray(phraseColors));
+						addColorsFrom(resColors, spacesColors);
+						addColorsFrom(resColors, wordColors);
+						addColor(resColors, charColor);
+						
+						spacesColors = [];
+						phraseColors = [];
+						wordColors = [];
+					}
 				} 
 				else 
 				{
@@ -230,41 +331,79 @@ class OpenflHarfbuzzRenderer
 					{
 						res.add(spaces);
 						spaces = '';
+						
+						if (genColors) 
+						{
+							addColorsFrom(resColors, spacesColors);
+							spacesColors = [];
+						}
 					}
 					
-					phrase += spaces+word;
+					phrase += spaces + word;
 					word = '';
 					spaces = char;
+					
+					if (genColors) 
+					{
+						addColorsFrom(phraseColors, spacesColors);
+						addColorsFrom(phraseColors, wordColors);
+						wordColors = [];
+						spacesColors = [charColor];
+					}
 				}
 				
 				continue;
 			}
 			
 			word += char;
+			
+			if (genColors) 
+			{
+				addColor(wordColors, charColor);
+			}
 		}
 
 		if (word != '' && TextScriptTools.isRightToLeft(ScriptIdentificator.identify(word, script)) != isRtoL) 
 		{
 			phrase += spaces + word;
 			spaces = word = '';
+			
+			if (genColors) 
+			{
+				addColorsFrom(phraseColors, spacesColors);
+				addColorsFrom(phraseColors, wordColors);
+				spacesColors = [];
+				wordColors = [];
+			}
 		}
+		
 		res.add(invertString(phrase));
 		res.add(spaces);
 		res.add(word);
+		
+		if (genColors) 
+		{
+			addColorsFrom(resColors, invertArray(phraseColors));
+			addColorsFrom(resColors, spacesColors);
+			addColorsFrom(resColors, wordColors);
+		}
+		
 		return res.toString();
 	}
 	
 	// added support for autosized fields (if fieldWidth <= 0)
-	public function layoutText(text:String, renderData:RenderData, fieldWidth:Float = 0.0, fontScale:Float = 1.0, letterSpacing:Float = 0.0):RenderData
+	public function layoutText(text:String, renderData:RenderData, fieldWidth:Float = 0.0, fontScale:Float = 1.0, letterSpacing:Float = 0.0, ?letterColors:Array<Int>):RenderData
 	{
-		text = preProcessText(text);
+		var preprocessedColors:Array<Int> = [];
+		text = preProcessText(text, letterColors, preprocessedColors);
 
 		var renderList = renderData.renderList;
 		var linesLength:Array<Int> = renderData.linesLength;
 		var linesWidth:Array<Float> = renderData.linesWidth;
 		var linesNumber:Int = 1;
 
-		var words = split(text);
+		var splitColors:Array<Int> = [];
+		var words = split(text, preprocessedColors, splitColors);
 
 		var lineXStart = (direction == LeftToRight) ? 0.0 : fieldWidth;
 		var xPosBase:Float = lineXStart;
@@ -272,10 +411,23 @@ class OpenflHarfbuzzRenderer
 		var lineWidth:Float = 0.0;
 		var lineLength:Int = 0;
 
+		renderData.colors = null;
+		renderData.colored = false;
+		var colorIndex = 0;
+
+		if (letterColors != null)
+		{
+			renderData.colors = [];
+			renderData.colored = true;
+		}
+
 		for (word in words) 
 		{
 			var renderedWord = OpenflHarbuzzCFFI.layoutText(face, createBuffer(word));
 			var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
+			
+			var wordLength:Int = Utf8.length(word);
+			var renderedWordLength:Int = renderedWord.length;
 
 			if (word == "\n" || isEndOfLine(xPosBase, wordWidth, fieldWidth)) 
 			{
@@ -289,7 +441,13 @@ class OpenflHarfbuzzRenderer
 
 				lineWidth = 0;
 				lineLength = 0;
-				if (StringTools.isSpace(word, 0)) continue;
+
+				if (StringTools.isSpace(word, 0)) 
+				{
+					colorIndex += wordLength;
+					
+					continue;
+				}
 			}
 
 			var xPos = xPosBase;
@@ -313,6 +471,8 @@ class OpenflHarfbuzzRenderer
 					trace("CODEPINT " + posInfo.codepoint);
 					trace(posInfo);
 #end
+					colorIndex++;
+					
 					continue;
 				}
 
@@ -343,6 +503,12 @@ class OpenflHarfbuzzRenderer
 
 				xPos += avanceX + letterSpacing;
 				yPos += avanceY;
+				
+				if (renderData.colored)
+				{
+					renderData.colors.push(splitColors[colorIndex]);
+					colorIndex++;
+				}
 			}
 
 			if (direction == LeftToRight) 
@@ -382,13 +548,7 @@ class OpenflHarfbuzzRenderer
 	public function renderText(text:String, lineWidth:Float = 400):HarfbuzzSprite 
 	{
 		var renderData = new RenderData();
-	//	layoutText(text, 0.5, lineWidth, renderData);
 		layoutText(text, renderData, lineWidth, 1.0, 0.0);
-		
-		/*trace("renderData.linesNumber: " + renderData.linesNumber);
-		trace("renderData.linesLength: " + renderData.linesLength);
-		trace("renderData.linesWidth: " + renderData.linesWidth);*/
-		
 		return renderer.render(lineWidth, renderData.linesNumber * lineHeight, renderData.renderList);
 	}
 }
