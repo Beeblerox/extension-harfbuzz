@@ -133,7 +133,7 @@ class OpenflHarfbuzzRenderer
 
 	private function isSpace(i:Int)
 	{
-		return i==9 || i==10 || i==11 || i==12 || i==13 || i==32;
+		return (i > 8 && i < 14) || i == 32;
 	}
 
 	// Splits text into words containging the trailing spaces ("a b c"=["a ", "b ", "c "])
@@ -269,6 +269,7 @@ class OpenflHarfbuzzRenderer
 		var isRtoL:Bool = TextScriptTools.isRightToLeft(script);
 		var res:StringBuf = new StringBuf();
 		var char:String = '';
+		var charCode:Int;
 		var phrase:String = '';
 		var spaces:String = '';
 		var word:String = '';
@@ -283,6 +284,7 @@ class OpenflHarfbuzzRenderer
 		for (i in 0...length)
 		{
 			char = Utf8.sub(text, i, 1);
+			charCode = Utf8.charCodeAt(text, i);
 			
 			if (genColors) 
 			{
@@ -290,7 +292,7 @@ class OpenflHarfbuzzRenderer
 			}
 			
 			if (char == "\r") continue;
-			if (isPunctuation(char) || StringTools.isSpace(text, i)) 
+			if (isPunctuation(char) || isSpace(charCode)) 
 			{
 				if (word == '') 
 				{
