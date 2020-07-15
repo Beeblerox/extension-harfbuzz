@@ -41,7 +41,7 @@ class ScriptIdentificator {
 		new UnicodeBlock(0x1EE00, 0x1EEFF, ScriptArabic)
 	];
 	
-	static function getCharCodeScript(utfCharCode:Int):TextScript {
+	public static function getCharCodeScript(utfCharCode:Int):TextScript {
 		for (block in blocks) {
 			if (block.test(utfCharCode))	return block.script;
 		}

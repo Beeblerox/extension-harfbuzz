@@ -22,7 +22,34 @@ class RenderData
 	var colors:Array<Int>;
 	var colored:Bool = false;
 	
-	public function new()
+	function new()
+	{
+		
+	}
+}
+
+@:publicFields
+class ChunkGroup
+{
+	var direction:TextDirection;
+	var chunks:Array<TextChunk> = [];
+	
+	function new()
+	{
+		
+	}
+}
+
+@:publicFields
+class TextChunk
+{
+	var start:Int;
+	var length:Int = 0;
+	var script:TextScript;
+	
+	var width:Float = 0.0;
+	
+	function new()
 	{
 		
 	}
@@ -47,6 +74,8 @@ class OpenflHarfbuzzRenderer
 	public var lineHeight(default, null):Float;
 	
 	public var renderer(default, null):TilesRenderer;
+	
+	var chunkGroups:Array<ChunkGroup> = [];
 	
 	public function new(
 			fontName:String,	// Font path or Openfl Asset ID
@@ -130,38 +159,43 @@ class OpenflHarfbuzzRenderer
 			char == '(' ||
 			char == ')';
 	}
+	
+	function isPunctuationCode(charCode:Int) 
+	{
+		return
+			charCode == 46 ||	// dot
+			charCode == 44 || 	// comma
+			charCode == 58 ||	// colon
+			charCode == 59 ||	// semi-colon
+			charCode == 45 ||	// minus or dash
+			charCode == 95 ||	// underscore
+			charCode == 91 ||	// left/opening bracket
+			charCode == 93 ||	// right/closing bracket
+			charCode == 40 ||	// left/opening parenthesis
+			charCode == 41;		// right/closing parenthesis
+	}
 
-	private function isSpace(i:Int)
+	private function isSpaceCode(i:Int)
 	{
 		return (i > 8 && i < 14) || i == 32;
 	}
-
-	// Splits text into words containging the trailing spaces ("a b c"=["a ", "b ", "c "])
-	function split(text:String, letterColors:Array<Int>, resColors:Array<Int>):Array<String> 
+	
+	function splitText(textCodes:Array<Int>, start:Int, length:Int):Array<String>
 	{
 		var ret = [];
 		var currentWord:Utf8 = null;
-		var l:Int = Utf8.length(text);
 		
-		var genColors:Bool = (letterColors.length > 0);
-		var currentWordColors:Array<Int> = null;
-		var colorIndex:Int = -1;
-		
-		Utf8.iter(text, function(cCode:Int)
+		for (i in 0...length)
 		{
-			colorIndex++;
+			var index:Int = start + i;
+			var cCode:Int = textCodes[index];
 			
-			if (cCode == 13) return;
-			if (isSpace(cCode)) 
+			if (cCode == 13) continue;
+			if (isSpaceCode(cCode)) 
 			{
 				if (currentWord != null) 
 				{
 					ret.push(currentWord.toString());
-					
-					if (genColors)
-					{
-						addColorsFrom(resColors, currentWordColors);
-					}
 				}
 				
 				currentWord = new Utf8();
@@ -169,42 +203,26 @@ class OpenflHarfbuzzRenderer
 				ret.push(currentWord.toString());
 				currentWord = null;
 				
-				if (genColors)
-				{
-					currentWordColors = [];
-					addColor(currentWordColors, letterColors[colorIndex]);
-					addColorsFrom(resColors, currentWordColors);
-					currentWordColors = null;
-				}
-				
-				return;
+				continue;
 			}
 			
 			if (currentWord == null) 
 			{
 				currentWord = new Utf8();
-				
-				if (genColors)
-				{
-					currentWordColors = [];
-				}
 			}
 			
 			currentWord.addChar(cCode);
 			
-			if (genColors)
+			if (isPunctuationCode(cCode))
 			{
-				addColor(currentWordColors, letterColors[colorIndex]);
+				ret.push(currentWord.toString());
+				currentWord = null;
 			}
-		});
+		}
+		
 		if (currentWord != null) 
 		{
 			ret.push(currentWord.toString());
-			
-			if (genColors)
-			{
-				addColorsFrom(resColors, currentWordColors);
-			}
 		}
 		
 		return ret;
@@ -233,179 +251,203 @@ class OpenflHarfbuzzRenderer
 			return (xPos < lineWidth && xPos - wordWidth < 0.0);
 		}
 	}
-
-	private function invertString(s:String):String
+	
+	function isEndOfLine2(xPos:Float, wordWidth:Float, lineWidth:Float) 
 	{
-		var l:Int = Utf8.length(s);
-		var res:Utf8 = new Utf8();
-		for (i in -l + 1...1) res.addChar(Utf8.charCodeAt(s, -i));
-		return res.toString();
+		if (lineWidth <= 0) return false;
+		return (xPos + wordWidth > lineWidth);
 	}
 	
-	private inline function invertArray(arr:Array<Int>):Array<Int>
+	function popSpaces(line:Array<String>):Void
 	{
-		var l:Int = arr.length;
-		var res:Array<Int> = [];
-		for (i in (-l + 1)...1) res.push(arr[-i]);
-		return res;
-	}
-	
-	private function addColorsFrom(to:Array<Int>, from:Array<Int>):Void
-	{
-		for (i in 0...from.length)
+		while (line.length > 0) // pop spaces
 		{
-			to.push(from[i]);
+			if (StringTools.isSpace(line[line.length - 1], 0))
+			{
+				line.pop();
+			}
+			else
+			{
+				break;
+			}
 		}
 	}
 	
-	private function addColor(to:Array<Int>, color:Int):Void
+	function getCharCodes(text:String):Array<Int>
 	{
-		to.push(color);
-	}
-
-	// if "text" is in RtoL script, invert non-RtoL substrings
-	function preProcessText(text:String, letterColors:Array<Int>, resColors:Array<Int>) 
-	{
-		var isRtoL:Bool = TextScriptTools.isRightToLeft(script);
-		var res:StringBuf = new StringBuf();
-		var char:String = '';
-		var charCode:Int;
-		var phrase:String = '';
-		var spaces:String = '';
-		var word:String = '';
-		var length:Int = Utf8.length(text);
-
-		var genColors:Bool = (letterColors != null && resColors != null);
-		var charColor:Int = 0xffffff;
-		var spacesColors:Array<Int> = [];
-		var wordColors:Array<Int> = [];
-		var phraseColors:Array<Int> = [];
-
-		for (i in 0...length)
+		var result:Array<Int> = [];
+		Utf8.iter(text, function(cCode:Int)
 		{
-			char = Utf8.sub(text, i, 1);
-			charCode = Utf8.charCodeAt(text, i);
+			result.push(cCode);
+		});
+		
+		return result;
+	}
+	
+	// break text into groups of chunks
+	function preProcessText(textCodes:Array<Int>):Array<ChunkGroup>
+	{
+		var length:Int = textCodes.length;
+		
+		var chunkStart:Int = 0;
+		var charCode:Int = textCodes[chunkStart];
+		var currentScript:TextScript = ScriptIdentificator.getCharCodeScript(charCode);
+		var currentDirection:TextDirection = TextScriptTools.isRightToLeft(currentScript) ? TextDirection.RightToLeft : TextDirection.LeftToRight;
+		var prevDirection:TextDirection = currentDirection;
+	
+		var spacesChunk:TextChunk = null;
+		var chunk:TextChunk = null;
+		
+		var chunks:Array<TextChunk> = [];
+		
+		if (isSpaceCode(charCode))
+		{
+			spacesChunk = new TextChunk();
+			spacesChunk.start = chunkStart;
+			spacesChunk.length = 1;
+			spacesChunk.script = currentScript;
+		}
+		else
+		{
+			chunk = new TextChunk();
+			chunk.start = chunkStart;
+			chunk.length = 1;
+			chunk.script = currentScript;
 			
-			if (genColors) 
-			{
-				charColor = letterColors[i];
-			}
+			chunks.push(chunk);
+		}
+		
+		var currentGroup:ChunkGroup = new ChunkGroup();
+		currentGroup.direction = currentDirection;
+		currentGroup.chunks = chunks;
+		
+		chunkGroups = [];
+		chunkGroups.push(currentGroup);
+	
+		// если справа или слева от последовательности пробелов имеем RTL текст, то выделяем последовательность пробелов в отдельную группу и добавляем ее в RTL группу...
+		
+		var prevDirection:TextDirection = currentDirection;
+		
+		var numSpaces:Int = isSpaceCode(charCode) ? 1 : 0;
+		var counter:Int = 1;
+		while (counter < length)
+		{
+			charCode = textCodes[counter];
+			var charScript = ScriptIdentificator.getCharCodeScript(charCode);
+			var charDirection:TextDirection = TextScriptTools.isRightToLeft(charScript) ? TextDirection.RightToLeft : TextDirection.LeftToRight;
 			
-			if (char == "\r") continue;
-			if (isPunctuation(char) || isSpace(charCode)) 
+			var isPunct = isPunctuationCode(charCode);
+			
+			if (isSpaceCode(charCode))
 			{
-				if (word == '') 
+				if (spacesChunk != null) // previous char is also a space char
 				{
-					spaces += char;
-					
-					if (genColors) 
-					{
-						addColor(spacesColors, charColor);
-					}
-					
-					continue;
+					spacesChunk.length++;
 				}
-				
-				if (char == "\n" || TextScriptTools.isRightToLeft(ScriptIdentificator.identify(word, script)) == isRtoL)
+				else
 				{
-					res.add(invertString(phrase));
-					res.add(spaces);
-					res.add(word);
-					res.add(char);
+					chunk = null;
 					
-					spaces = phrase = word = '';
-					
-					if (genColors) 
-					{
-						addColorsFrom(resColors, invertArray(phraseColors));
-						addColorsFrom(resColors, spacesColors);
-						addColorsFrom(resColors, wordColors);
-						addColor(resColors, charColor);
-						
-						spacesColors = [];
-						phraseColors = [];
-						wordColors = [];
-					}
-				} 
-				else 
+					spacesChunk = new TextChunk();
+					spacesChunk.start = counter;
+					spacesChunk.length = 1;
+					spacesChunk.script = charScript;
+				}
+			}
+			else //if (!isSpace(charCode))
+			{
+				if (spacesChunk != null) // previous char is a space char
 				{
-					if (phrase == '') 
+					// decide where to put space chunk...
+					if (prevDirection != charDirection) // need to start new chunk group
 					{
-						res.add(spaces);
-						spaces = '';
-						
-						if (genColors) 
+						if (prevDirection == TextDirection.RightToLeft)
 						{
-							addColorsFrom(resColors, spacesColors);
-							spacesColors = [];
+							chunks.push(spacesChunk);
+							
+							chunks = [];
+							currentGroup = new ChunkGroup();
+							currentGroup.direction = charDirection;
+							currentGroup.chunks = chunks;
+							chunkGroups.push(currentGroup);
+						}
+						else // if (charDirection == TextDirection.RightToLeft)
+						{
+							chunks = [];
+							currentGroup = new ChunkGroup();
+							currentGroup.direction = charDirection;
+							currentGroup.chunks = chunks;
+							chunkGroups.push(currentGroup);
+							
+							chunks.push(spacesChunk);
 						}
 					}
-					
-					phrase += spaces + word;
-					word = '';
-					spaces = char;
-					
-					if (genColors) 
+					else
 					{
-						addColorsFrom(phraseColors, spacesColors);
-						addColorsFrom(phraseColors, wordColors);
-						wordColors = [];
-						spacesColors = [charColor];
+						chunks.push(spacesChunk);
+					}
+					
+					chunk = new TextChunk();
+					chunk.start = counter;
+					chunk.length = 1;
+					chunk.script = charScript;
+					
+					chunks.push(chunk);
+					
+					spacesChunk = null;
+				}
+				else 
+				{
+					if (prevDirection != charDirection && !isPunct)
+					{
+						chunks = [];
+						currentGroup = new ChunkGroup();
+						currentGroup.direction = charDirection;
+						currentGroup.chunks = chunks;
+						chunkGroups.push(currentGroup);
+						
+						chunk = new TextChunk();
+						chunk.start = counter;
+						chunk.length = 1;
+						chunk.script = charScript;
+						
+						chunks.push(chunk);
+					}
+					else
+					{
+						chunk.length++;
 					}
 				}
 				
-				continue;
+				if (!isPunct)
+				{
+					prevDirection = charDirection;
+				}
 			}
 			
-			word += char;
-			
-			if (genColors) 
-			{
-				addColor(wordColors, charColor);
-			}
-		}
-
-		if (word != '' && TextScriptTools.isRightToLeft(ScriptIdentificator.identify(word, script)) != isRtoL) 
-		{
-			phrase += spaces + word;
-			spaces = word = '';
-			
-			if (genColors) 
-			{
-				addColorsFrom(phraseColors, spacesColors);
-				addColorsFrom(phraseColors, wordColors);
-				spacesColors = [];
-				wordColors = [];
-			}
+			counter++;
 		}
 		
-		res.add(invertString(phrase));
-		res.add(spaces);
-		res.add(word);
-		
-		if (genColors) 
-		{
-			addColorsFrom(resColors, invertArray(phraseColors));
-			addColorsFrom(resColors, spacesColors);
-			addColorsFrom(resColors, wordColors);
-		}
-		
-		return res.toString();
+		return chunkGroups;
 	}
 	
+	// TODO: restore text coloring...
 	// added support for autosized fields (if fieldWidth <= 0)
 	public function layoutText(text:String, renderData:RenderData, fieldWidth:Float = 0.0, fontScale:Float = 1.0, letterSpacing:Float = 0.0, ?letterColors:Array<Int>):RenderData
 	{
-		var preprocessedColors:Array<Int> = [];
-		text = preProcessText(text, letterColors, preprocessedColors);
+		if (text == null || text.length == 0)
+		{
+			return renderData;
+		}
+		
+		var charCodes:Array<Int> = getCharCodes(text);
+		var chunkGroups = preProcessText(charCodes);
+		text = null;
 
 		var renderList = renderData.renderList;
 		var linesLength:Array<Int> = renderData.linesLength;
 		var linesWidth:Array<Float> = renderData.linesWidth;
 		var linesNumber:Int = 1;
-
-		var splitColors:Array<Int> = [];
-		var words = split(text, preprocessedColors, splitColors);
 
 		var lineXStart = (direction == LeftToRight) ? 0.0 : fieldWidth;
 		var xPosBase:Float = lineXStart;
@@ -417,75 +459,49 @@ class OpenflHarfbuzzRenderer
 		renderData.colored = false;
 		var colorIndex = 0;
 
-		if (letterColors != null)
+		/*if (letterColors != null)
 		{
 			renderData.colors = [];
 			renderData.colored = true;
-		}
-
-		for (word in words) 
+		}*/
+		
+		function pushToRenderList(string:String, renderedString:Array<PosInfo>, stringWidth:Float)
 		{
-			var renderedWord = OpenflHarbuzzCFFI.layoutText(face, createBuffer(word));
-			var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
-			
-			var wordLength:Int = Utf8.length(word);
-			var renderedWordLength:Int = renderedWord.length;
-
-			if (word == "\n" || isEndOfLine(xPosBase, wordWidth, fieldWidth)) 
-			{
-				linesWidth[linesNumber - 1] = lineWidth;
-				linesLength[linesNumber - 1] = lineLength;
-
-				// Newline
-				linesNumber++;
-				xPosBase = lineXStart;
-				yPosBase = linesNumber * lineHeight * fontScale;
-
-				lineWidth = 0;
-				lineLength = 0;
-
-				if (StringTools.isSpace(word, 0)) 
-				{
-					colorIndex += wordLength;
-					
-					continue;
-				}
-			}
-
 			var xPos = xPosBase;
-			if (direction == RightToLeft) xPos -= wordWidth;
+			if (direction == RightToLeft) xPos -= stringWidth;
 			var yPos = yPosBase;
 
-			for (posInfo in renderedWord) 
+			for (posInfo in renderedString) 
 			{
 				var g = renderer.glyphs[posInfo.codepoint];
 				if (g == null)
 				{
-					renderer.addGlyphs(OpenflHarbuzzCFFI.createGlyphData(face, createBuffer(word)));
+					renderer.addGlyphs(OpenflHarbuzzCFFI.createGlyphData(face, createBuffer(string)));
 				}
 				
 				g = renderer.glyphs[posInfo.codepoint];
 				if (g == null) 
 				{
-#if debug
-					trace("WOW! I'm missing a glyph for the following word: " + word);
+	#if debug
+					trace("WOW! I'm missing a glyph for the following word: " + string);
 					trace("This should not be happening! Your text will be renderer badly :(");
 					trace("CODEPINT " + posInfo.codepoint);
 					trace(posInfo);
-#end
-					colorIndex++;
+	#end
+				//	colorIndex++;
 					
 					continue;
 				}
 
-				var dstX = /*Std.int*/(xPos + (posInfo.offset.x + g.bitmapLeft) * fontScale);
-				var dstY = /*Std.int*/(yPos + (posInfo.offset.y - g.bitmapTop) * fontScale);
+				var dstX = (xPos + (posInfo.offset.x + g.bitmapLeft) * fontScale);
+				var dstY = (yPos + (posInfo.offset.y - g.bitmapTop) * fontScale);
 
 				var avanceX = posInfo.advance.x / (100 / 64) * fontScale; // 100/64 = 1.5625 = Magic!
 				var avanceY = posInfo.advance.y / (100 / 64) * fontScale;
 
 				if (fieldWidth > 0 && xPos + avanceX >= fieldWidth && direction == LeftToRight) 
 				{
+					trace("push to linesWidth: " + (linesNumber - 1) + " " + lineWidth);
 					linesWidth[linesNumber - 1] = lineWidth;
 					linesLength[linesNumber - 1] = lineLength;
 
@@ -493,8 +509,8 @@ class OpenflHarfbuzzRenderer
 					linesNumber++;
 					xPos = 0;
 					yPos = linesNumber * lineHeight * fontScale;
-					dstX = /*Std.int*/(xPos + (posInfo.offset.x + g.bitmapLeft) * fontScale);
-					dstY = /*Std.int*/(yPos + (posInfo.offset.y - g.bitmapTop) * fontScale);
+					dstX = (xPos + (posInfo.offset.x + g.bitmapLeft) * fontScale);
+					dstY = (yPos + (posInfo.offset.y - g.bitmapTop) * fontScale);
 
 					lineWidth = 0;
 					lineLength = 0;
@@ -505,27 +521,133 @@ class OpenflHarfbuzzRenderer
 
 				xPos += avanceX + letterSpacing;
 				yPos += avanceY;
-				
-				if (renderData.colored)
-				{
-					renderData.colors.push(splitColors[colorIndex]);
-					colorIndex++;
-				}
 			}
 
 			if (direction == LeftToRight) 
 			{
-				xPosBase += wordWidth;
+				xPosBase += stringWidth;
 			} 
 			else 
 			{
-				xPosBase -= wordWidth;
+				xPosBase -= stringWidth;
 			}
 			
-			lineWidth += wordWidth;
+			lineWidth += stringWidth;
+		}
+	
+		for (group in chunkGroups)
+		{
+			var chunks = group.chunks;
+			
+			if (group.direction != direction)
+			{
+				var widthLeft:Float = (fieldWidth <= 0) ? 0 : fieldWidth - lineWidth;
+				
+				var line:Array<String> = [];
+				var lines = [];
+				lines.push(line);
+				
+				for (chunk in chunks)
+				{
+					var chunkWords = splitText(charCodes, chunk.start, chunk.length);
+					
+					for (word in chunkWords)
+					{
+						var renderedWord = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, chunk.script, language, word));
+						var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
+
+						if (word == "\n" || isEndOfLine2(0, wordWidth, widthLeft))
+						{
+							popSpaces(line);
+							
+							line = [];
+							lines.push(line);
+							widthLeft = (fieldWidth <= 0) ? 0 : fieldWidth;
+							
+							if (StringTools.isSpace(word, 0)) 
+							{
+								continue;
+							}
+						}
+						
+						line.push(word);
+						
+						widthLeft -= wordWidth;
+						
+						if (fieldWidth > 0 && widthLeft <= 0)
+						{
+							popSpaces(line);
+							
+							line = [];
+							lines.push(line);
+							widthLeft = (fieldWidth <= 0) ? 0 : fieldWidth;
+						}
+					}
+				}
+				
+				for (line in lines)
+				{
+					var lineText = line.join("");
+					var renderedLine = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, script, language, lineText));
+					var renderedWidth = layoutWidth(renderedLine, fontScale, letterSpacing);
+				
+					if (isEndOfLine2(lineWidth, renderedWidth, fieldWidth))
+					{
+						linesNumber++;
+						yPosBase = linesNumber * lineHeight * fontScale;
+						xPosBase = 0;
+						
+						if (direction != LeftToRight) 
+						{
+							xPosBase = fieldWidth;
+						}
+					}
+					
+					pushToRenderList(lineText, renderedLine, renderedWidth);
+				}
+			}
+			else
+			{
+				// just go further through the group and fill the lines...
+				for (chunk in group.chunks)
+				{
+					var chunkWords = splitText(charCodes, chunk.start, chunk.length);
+					
+					for (word in chunkWords)
+					{
+						var renderedWord = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, chunk.script, language, word));
+						var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
+
+						if (word == "\n" || isEndOfLine(xPosBase, wordWidth, fieldWidth)) 
+						{
+							trace("push to linesWidth: " + (linesNumber - 1) + " " + lineWidth);
+							
+							linesWidth[linesNumber - 1] = lineWidth;
+							linesLength[linesNumber - 1] = lineLength;
+
+							// Newline
+							linesNumber++;
+							xPosBase = lineXStart;
+							yPosBase = linesNumber * lineHeight * fontScale;
+
+							lineWidth = 0;
+							lineLength = 0;
+
+							if (StringTools.isSpace(word, 0)) 
+							{
+								continue;
+							}
+						}
+						
+						pushToRenderList(word, renderedWord, wordWidth);
+					}
+				}
+			}
 		}
 
 		// flush everything that left
+		trace("push to linesWidth: " + (linesNumber - 1) + " " + lineWidth);
+		
 		linesWidth[linesNumber - 1] = lineWidth;
 		linesLength[linesNumber - 1] = lineLength;	
 		renderData.linesNumber = linesNumber;
@@ -542,6 +664,14 @@ class OpenflHarfbuzzRenderer
 			{
 				renderItem.x += maxLineWidth;
 			}
+		}
+		
+		// TODO: fix lines widths and lengths...
+		trace("linesNumber: " + linesNumber);
+		for (i in 0...linesNumber)
+		{
+			trace("line " + i + " width: " + linesWidth[i]);
+			trace("line " + i + " length: " + linesLength[i]);
 		}
 
 		return renderData;
