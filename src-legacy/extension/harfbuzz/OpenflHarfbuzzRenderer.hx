@@ -501,7 +501,6 @@ class OpenflHarfbuzzRenderer
 
 				if (fieldWidth > 0 && xPos + avanceX >= fieldWidth && direction == LeftToRight) 
 				{
-					trace("push to linesWidth: " + (linesNumber - 1) + " " + lineWidth);
 					linesWidth[linesNumber - 1] = lineWidth;
 					linesLength[linesNumber - 1] = lineLength;
 
@@ -585,22 +584,24 @@ class OpenflHarfbuzzRenderer
 					}
 				}
 				
-				for (line in lines)
+				for (i in 0...lines.length)
 				{
-					var lineText = line.join("");
+					var lineText = lines[i].join("");
+					
 					var renderedLine = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, script, language, lineText));
 					var renderedWidth = layoutWidth(renderedLine, fontScale, letterSpacing);
 				
-					if (isEndOfLine2(lineWidth, renderedWidth, fieldWidth))
+					if (i > 0 || isEndOfLine2(lineWidth, renderedWidth, fieldWidth))
 					{
+						linesWidth[linesNumber - 1] = lineWidth;
+						linesLength[linesNumber - 1] = lineLength;
+						
 						linesNumber++;
 						yPosBase = linesNumber * lineHeight * fontScale;
-						xPosBase = 0;
+						xPosBase = lineXStart;
 						
-						if (direction != LeftToRight) 
-						{
-							xPosBase = fieldWidth;
-						}
+						lineWidth = 0;
+						lineLength = 0;
 					}
 					
 					pushToRenderList(lineText, renderedLine, renderedWidth);
@@ -620,8 +621,6 @@ class OpenflHarfbuzzRenderer
 
 						if (word == "\n" || isEndOfLine(xPosBase, wordWidth, fieldWidth)) 
 						{
-							trace("push to linesWidth: " + (linesNumber - 1) + " " + lineWidth);
-							
 							linesWidth[linesNumber - 1] = lineWidth;
 							linesLength[linesNumber - 1] = lineLength;
 
@@ -646,8 +645,6 @@ class OpenflHarfbuzzRenderer
 		}
 
 		// flush everything that left
-		trace("push to linesWidth: " + (linesNumber - 1) + " " + lineWidth);
-		
 		linesWidth[linesNumber - 1] = lineWidth;
 		linesLength[linesNumber - 1] = lineLength;	
 		renderData.linesNumber = linesNumber;
@@ -664,14 +661,6 @@ class OpenflHarfbuzzRenderer
 			{
 				renderItem.x += maxLineWidth;
 			}
-		}
-		
-		// TODO: fix lines widths and lengths...
-		trace("linesNumber: " + linesNumber);
-		for (i in 0...linesNumber)
-		{
-			trace("line " + i + " width: " + linesWidth[i]);
-			trace("line " + i + " length: " + linesLength[i]);
 		}
 
 		return renderData;
