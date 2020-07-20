@@ -147,24 +147,6 @@ class OpenflHarfbuzzRenderer
 		return OpenflHarbuzzCFFI.createBuffer(direction, script, language, text);
 	}
 
-	function isPunctuation(char:String) 
-	{
-		return
-			char == '.' ||
-			char == ',' ||
-			char == ':' ||
-			char == ';' ||
-			char == '-' ||
-			char == '_' ||
-			char == '[' ||
-			char == ']' ||
-			char == '(' ||
-			char == ')' ||
-			char == "/";
-	}
-	
-	//"ماجراجویی “اردوگاه متروکه - 2” 1/2 رو انجام بده"
-	
 	function isPunctuationCode(charCode:Int) 
 	{
 		return
@@ -178,17 +160,6 @@ class OpenflHarfbuzzRenderer
 			charCode == 93 		||	// right/closing bracket
 			charCode == 40 		||	// left/opening parenthesis
 			charCode == 41;			// right/closing parenthesis	
-		//	charCode == 47;		// forward slash
-	}
-	
-	function ignoreDirectionChange(charCode:Int)
-	{
-		return isSpaceCode(charCode) || (charCode >= 33 && charCode <= 64) || (charCode == 8220) || (charCode == 8221);
-	}
-	
-	function isNumberCode(charCode:Int)
-	{
-		return (charCode >= 48 && charCode <= 57); // || charCode == 37;
 	}
 
 	private function isSpaceCode(i:Int)
@@ -268,12 +239,6 @@ class OpenflHarfbuzzRenderer
 		}
 	}
 	
-	function isEndOfLine2(xPos:Float, wordWidth:Float, lineWidth:Float) 
-	{
-		if (lineWidth <= 0) return false;
-		return (xPos + wordWidth > lineWidth);
-	}
-	
 	function getCharCodes(text:String):Array<Int>
 	{
 		var result:Array<Int> = [];
@@ -302,160 +267,6 @@ class OpenflHarfbuzzRenderer
 		}
 		
 		return delta;
-	}
-	
-	// break text into groups of chunks
-	function preProcessText(textCodes:Array<Int>):Array<ChunkGroup>
-	{
-		var length:Int = textCodes.length;
-		
-		var chunkStart:Int = 0;
-		var charCode:Int = textCodes[chunkStart];
-		var currentScript:TextScript = ScriptIdentificator.getCharCodeScript(charCode);
-		var currentDirection:TextDirection = TextScriptTools.isRightToLeft(currentScript) ? TextDirection.RightToLeft : TextDirection.LeftToRight;
-		
-		var ignoreDirChange = ignoreDirectionChange(charCode);
-		
-		currentDirection = ignoreDirChange ? direction : currentDirection;
-		currentScript = ignoreDirChange ? script : currentScript;
-		
-		var prevDirection:TextDirection = currentDirection;
-	
-		var spacesChunk:TextChunk = null;
-		var chunk:TextChunk = null;
-		
-		var chunks:Array<TextChunk> = [];
-		
-		if (isSpaceCode(charCode))
-		{
-			spacesChunk = new TextChunk();
-			spacesChunk.start = chunkStart;
-			spacesChunk.length = 1;
-			spacesChunk.script = currentScript;
-		}
-		else
-		{
-			chunk = new TextChunk();
-			chunk.start = chunkStart;
-			chunk.length = 1;
-			chunk.script = currentScript;
-			
-			chunks.push(chunk);
-		}
-		
-		var currentGroup:ChunkGroup = new ChunkGroup();
-		currentGroup.direction = currentDirection;
-		currentGroup.chunks = chunks;
-		
-		chunkGroups = [];
-		chunkGroups.push(currentGroup);
-	
-		// если справа или слева от последовательности пробелов имеем RTL текст, то выделяем последовательность пробелов в отдельную группу и добавляем ее в RTL группу...
-		
-		var prevDirection:TextDirection = currentDirection;
-		
-		var numSpaces:Int = isSpaceCode(charCode) ? 1 : 0;
-		var counter:Int = 1;
-		while (counter < length)
-		{
-			charCode = textCodes[counter];
-			var charScript = ScriptIdentificator.getCharCodeScript(charCode);
-			var charDirection:TextDirection = TextScriptTools.isRightToLeft(charScript) ? TextDirection.RightToLeft : TextDirection.LeftToRight;
-			
-		//	var isPunct = isPunctuationCode(charCode);
-			ignoreDirChange = ignoreDirectionChange(charCode);
-			
-			if (isSpaceCode(charCode))
-			{
-				if (spacesChunk != null) // previous char is also a space char
-				{
-					spacesChunk.length++;
-				}
-				else
-				{
-					chunk = null;
-					
-					spacesChunk = new TextChunk();
-					spacesChunk.start = counter;
-					spacesChunk.length = 1;
-					spacesChunk.script = charScript;
-				}
-			}
-			else //if (!isSpace(charCode))
-			{
-				if (spacesChunk != null) // previous char is a space char
-				{
-					// decide where to put space chunk...
-					if (prevDirection != charDirection) // need to start new chunk group
-					{
-						if (prevDirection == TextDirection.RightToLeft)
-						{
-							chunks.push(spacesChunk);
-							
-							chunks = [];
-							currentGroup = new ChunkGroup();
-							currentGroup.direction = charDirection;
-							currentGroup.chunks = chunks;
-							chunkGroups.push(currentGroup);
-						}
-						else // if (charDirection == TextDirection.RightToLeft)
-						{
-							chunks = [];
-							currentGroup = new ChunkGroup();
-							currentGroup.direction = charDirection;
-							currentGroup.chunks = chunks;
-							chunkGroups.push(currentGroup);
-							
-							chunks.push(spacesChunk);
-						}
-					}
-					else
-					{
-						chunks.push(spacesChunk);
-					}
-					
-					chunk = new TextChunk();
-					chunk.start = counter;
-					chunk.length = 1;
-					chunk.script = charScript;
-					
-					chunks.push(chunk);
-					
-					spacesChunk = null;
-				}
-				else 
-				{
-					if (prevDirection != charDirection && !ignoreDirChange)
-					{
-						chunks = [];
-						currentGroup = new ChunkGroup();
-						currentGroup.direction = charDirection;
-						currentGroup.chunks = chunks;
-						chunkGroups.push(currentGroup);
-						
-						chunk = new TextChunk();
-						chunk.start = counter;
-						chunk.length = 1;
-						chunk.script = charScript;
-						
-						chunks.push(chunk);
-					}
-					else
-					{
-						chunk.length++;
-					}
-				}
-				
-				if (!ignoreDirChange)
-				{
-					prevDirection = charDirection;
-				}
-			}
-			
-			counter++;
-		}
-		
-		return chunkGroups;
 	}
 	
 	// TODO: restore text coloring...
@@ -565,9 +376,12 @@ class OpenflHarfbuzzRenderer
 		}
 		
 		var textLines:Array<String> = text.split("\n");
+		var numTextLines:Int = textLines.length;
 		var counter:Int = 0;
-		for (textLine in textLines)
+		
+		for (textLineIndex in 0...numTextLines)
 		{
+			var textLine:String = textLines[textLineIndex];
 			var visualRuns = Icu.getVisualRuns(textLine, (direction == TextDirection.LeftToRight));
 			var numVisualRuns = visualRuns.length;
 			
@@ -609,8 +423,6 @@ class OpenflHarfbuzzRenderer
 					var lines = [];
 					lines.push(line);
 					
-					var widthLeft:Float = (fieldWidth <= 0) ? 0 : fieldWidth - lineWidth;
-					
 					var tempXpos:Float = xPosBase;
 					
 					for (word in runWords)
@@ -618,7 +430,7 @@ class OpenflHarfbuzzRenderer
 						var renderedWord = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(runDirection, script, language, word));
 						var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
 						
-						if (isEndOfLine(tempXpos, wordWidth, lineWidth))
+						if (isEndOfLine(tempXpos, wordWidth, fieldWidth))
 						{
 						//	var delta = popSpaces(line);
 							
@@ -637,14 +449,14 @@ class OpenflHarfbuzzRenderer
 						
 						tempXpos -= wordWidth;
 						
-						if (isEndOfLine(tempXpos, wordWidth, lineWidth))
-						{
+						if (isEndOfLine(tempXpos, wordWidth, fieldWidth))
+						{	
 						//	popSpaces(line);
 							
 							line = [];
 							lines.push(line);
 							
-							tempXpos -= wordWidth;
+							tempXpos = xPosBase;
 						}
 					}
 					
@@ -656,7 +468,7 @@ class OpenflHarfbuzzRenderer
 						var renderedLine = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(runDirection, script, language, lineText));
 						var renderedWidth = layoutWidth(renderedLine, fontScale, letterSpacing);
 					
-						if (i > 0 || isEndOfLine2(lineWidth, renderedWidth, fieldWidth))
+						if (i > 0 || isEndOfLine(xPosBase, renderedWidth, fieldWidth))
 						{
 							linesWidth[linesNumber - 1] = lineWidth;
 							linesLength[linesNumber - 1] = lineLength;
@@ -680,7 +492,7 @@ class OpenflHarfbuzzRenderer
 					{
 						var renderedWord = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(runDirection, script, language, word));
 						var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
-
+						
 						if (isEndOfLine(xPosBase, wordWidth, fieldWidth)) 
 						{
 							linesWidth[linesNumber - 1] = lineWidth;
@@ -704,145 +516,12 @@ class OpenflHarfbuzzRenderer
 						pushToRenderList(word, renderedWord, wordWidth);
 					}
 				}
-				
-				
-				
-				
-				/*
-				var chunks = group.chunks;
-				if (group.direction != direction)
-				{
-					var line:Array<String> = [];
-					var lines = [];
-					lines.push(line);
-				
-					var chunkWords = splitText(charCodes, chunk.start, chunk.length);
-					
-					for (word in chunkWords)
-					{
-						var renderedWord = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, chunk.script, language, word));
-						var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
-
-						if (word == "\n" || isEndOfLine2(0, wordWidth, widthLeft))
-						{
-							var delta = popSpaces(line);
-						//	deltaLength.push(delta);
-							
-							line = [];
-							lines.push(line);
-							widthLeft = (fieldWidth <= 0) ? 0 : fieldWidth;
-							
-							if (StringTools.isSpace(word, 0)) 
-							{
-						//		deltaLength[deltaLength.length - 1] += 1;
-								continue;
-							}
-						}
-						
-						line.push(word);
-						
-						widthLeft -= wordWidth;
-						
-						if (fieldWidth > 0 && widthLeft <= 0)
-						{
-							popSpaces(line);
-							
-							line = [];
-							lines.push(line);
-							widthLeft = (fieldWidth <= 0) ? 0 : fieldWidth;
-						}
-					}
-					
-					for (i in 0...lines.length)
-					{
-						var lineText = lines[i].join("");
-					//	var delta = deltaLength[i];
-						
-						var renderedLine = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, script, language, lineText));
-						var renderedWidth = layoutWidth(renderedLine, fontScale, letterSpacing);
-					
-						if (i > 0 || isEndOfLine2(lineWidth, renderedWidth, fieldWidth))
-						{
-							linesWidth[linesNumber - 1] = lineWidth;
-							linesLength[linesNumber - 1] = lineLength;
-							
-							linesNumber++;
-							yPosBase = linesNumber * lineHeight * fontScale;
-							xPosBase = lineXStart;
-							
-							lineWidth = 0;
-							lineLength = 0;
-						}
-						
-						pushToRenderList(lineText, renderedLine, renderedWidth);
-						
-					//	colorIndex += delta;
-					}
-				}
-				else
-				{
-					// just go further through the group and fill the lines...
-					for (chunk in group.chunks)
-					{
-						var chunkWords = splitText(charCodes, chunk.start, chunk.length);
-						
-						for (word in chunkWords)
-						{
-							var renderedWord = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, chunk.script, language, word));
-							var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
-
-							if (word == "\n" || isEndOfLine(xPosBase, wordWidth, fieldWidth)) 
-							{
-								linesWidth[linesNumber - 1] = lineWidth;
-								linesLength[linesNumber - 1] = lineLength;
-
-								// Newline
-								linesNumber++;
-								xPosBase = lineXStart;
-								yPosBase = linesNumber * lineHeight * fontScale;
-
-								lineWidth = 0;
-								lineLength = 0;
-
-								if (StringTools.isSpace(word, 0)) 
-								{
-									colorIndex++;
-									continue;
-								}
-							}
-							
-							pushToRenderList(word, renderedWord, wordWidth);
-						}
-					}
-				}
-
-				// flush everything that left
-				linesWidth[linesNumber - 1] = lineWidth;
-				linesLength[linesNumber - 1] = lineLength;	
-				renderData.linesNumber = linesNumber;
-
-				if (direction != LeftToRight && fieldWidth <= 0)
-				{
-					var maxLineWidth = linesWidth[0];
-					for (i in 1...linesWidth.length)
-					{
-						maxLineWidth = Math.max(maxLineWidth, linesWidth[i]);
-					}
-					
-					for (renderItem in renderData.renderList)
-					{
-						renderItem.x += maxLineWidth;
-					}
-				}
-				
-				
-				
-				*/
 			}
 			
-			// TODO (Zaphod): continue from here...
-			
-			linesNumber++;
+			if (textLineIndex < numTextLines - 1)
+			{
+				linesNumber++;
+			}
 			
 			counter++;
 		}
@@ -866,152 +545,6 @@ class OpenflHarfbuzzRenderer
 			}
 		}
 		
-		return renderData;
-		
-		
-		var charCodes:Array<Int> = getCharCodes(text);
-		var chunkGroups = preProcessText(charCodes);
-		text = null;
-		
-		
-	
-		for (group in chunkGroups)
-		{
-			var chunks = group.chunks;
-			
-			if (group.direction != direction)
-			{
-				var widthLeft:Float = (fieldWidth <= 0) ? 0 : fieldWidth - lineWidth;
-				
-			//	var deltaLength:Array<Int> = [];
-				
-				var line:Array<String> = [];
-				var lines = [];
-				lines.push(line);
-				
-				for (chunk in chunks)
-				{
-					var chunkWords = splitText(charCodes, chunk.start, chunk.length);
-					
-					for (word in chunkWords)
-					{
-						var renderedWord = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, chunk.script, language, word));
-						var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
-
-						if (word == "\n" || isEndOfLine2(0, wordWidth, widthLeft))
-						{
-							var delta = popSpaces(line);
-						//	deltaLength.push(delta);
-							
-							line = [];
-							lines.push(line);
-							widthLeft = (fieldWidth <= 0) ? 0 : fieldWidth;
-							
-							if (StringTools.isSpace(word, 0)) 
-							{
-						//		deltaLength[deltaLength.length - 1] += 1;
-								continue;
-							}
-						}
-						
-						line.push(word);
-						
-						widthLeft -= wordWidth;
-						
-						if (fieldWidth > 0 && widthLeft <= 0)
-						{
-							popSpaces(line);
-							
-							line = [];
-							lines.push(line);
-							widthLeft = (fieldWidth <= 0) ? 0 : fieldWidth;
-						}
-					}
-				}
-				
-				for (i in 0...lines.length)
-				{
-					var lineText = lines[i].join("");
-				//	var delta = deltaLength[i];
-					
-					var renderedLine = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, script, language, lineText));
-					var renderedWidth = layoutWidth(renderedLine, fontScale, letterSpacing);
-				
-					if (i > 0 || isEndOfLine2(lineWidth, renderedWidth, fieldWidth))
-					{
-						linesWidth[linesNumber - 1] = lineWidth;
-						linesLength[linesNumber - 1] = lineLength;
-						
-						linesNumber++;
-						yPosBase = linesNumber * lineHeight * fontScale;
-						xPosBase = lineXStart;
-						
-						lineWidth = 0;
-						lineLength = 0;
-					}
-					
-					pushToRenderList(lineText, renderedLine, renderedWidth);
-					
-				//	colorIndex += delta;
-				}
-			}
-			else
-			{
-				// just go further through the group and fill the lines...
-				for (chunk in group.chunks)
-				{
-					var chunkWords = splitText(charCodes, chunk.start, chunk.length);
-					
-					for (word in chunkWords)
-					{
-						var renderedWord = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(group.direction, chunk.script, language, word));
-						var wordWidth = layoutWidth(renderedWord, fontScale, letterSpacing);
-
-						if (word == "\n" || isEndOfLine(xPosBase, wordWidth, fieldWidth)) 
-						{
-							linesWidth[linesNumber - 1] = lineWidth;
-							linesLength[linesNumber - 1] = lineLength;
-
-							// Newline
-							linesNumber++;
-							xPosBase = lineXStart;
-							yPosBase = linesNumber * lineHeight * fontScale;
-
-							lineWidth = 0;
-							lineLength = 0;
-
-							if (StringTools.isSpace(word, 0)) 
-							{
-								colorIndex++;
-								continue;
-							}
-						}
-						
-						pushToRenderList(word, renderedWord, wordWidth);
-					}
-				}
-			}
-		}
-
-		// flush everything that left
-		linesWidth[linesNumber - 1] = lineWidth;
-		linesLength[linesNumber - 1] = lineLength;	
-		renderData.linesNumber = linesNumber;
-
-		if (direction != LeftToRight && fieldWidth <= 0)
-		{
-			var maxLineWidth = linesWidth[0];
-			for (i in 1...linesWidth.length)
-			{
-				maxLineWidth = Math.max(maxLineWidth, linesWidth[i]);
-			}
-			
-			for (renderItem in renderData.renderList)
-			{
-				renderItem.x += maxLineWidth;
-			}
-		}
-
 		return renderData;
 	}
 
