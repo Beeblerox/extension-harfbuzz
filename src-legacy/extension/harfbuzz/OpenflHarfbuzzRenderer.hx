@@ -118,11 +118,7 @@ class OpenflHarfbuzzRenderer
 		} 
 		else
 		{
-		//	#if (!openfl_next)
 			face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName).getData());
-		//	#else
-		//	face = OpenflHarbuzzCFFI.loadFontFaceFromMemory(getBytes(fontName));
-		//	#end
 		}
 
 		OpenflHarbuzzCFFI.setFontSize(face, textSize);
@@ -250,26 +246,6 @@ class OpenflHarfbuzzRenderer
 		return result;
 	}
 	
-	function popSpaces(line:Array<String>):Int
-	{
-		var delta:Int = 0;
-		while (line.length > 0) // pop spaces
-		{
-			if (StringTools.isSpace(line[line.length - 1], 0))
-			{
-				var word = line.pop();
-				delta += Utf8.length(word);
-			}
-			else
-			{
-				break;
-			}
-		}
-		
-		return delta;
-	}
-	
-	// TODO: restore text coloring...
 	// added support for autosized fields (if fieldWidth <= 0)
 	public function layoutText(text:String, renderData:RenderData, fieldWidth:Float = 0.0, fontScale:Float = 1.0, letterSpacing:Float = 0.0, ?letterColors:Array<Int>):RenderData
 	{
@@ -282,12 +258,12 @@ class OpenflHarfbuzzRenderer
 		var linesLength:Array<Int> = renderData.linesLength;
 		var linesWidth:Array<Float> = renderData.linesWidth;
 		var linesNumber:Int = 1;
-		
-		/*if (letterColors != null)
+
+		if (letterColors != null)
 		{
 			renderData.colors = [];
 			renderData.colored = true;
-		}*/
+		}
 
 		fieldWidth = (fieldWidth < 0.0) ? 0.0 : fieldWidth;
 
@@ -382,6 +358,21 @@ class OpenflHarfbuzzRenderer
 		for (textLineIndex in 0...numTextLines)
 		{
 			var textLine:String = textLines[textLineIndex];
+			
+			// don't try to process empty lines
+			if (textLine.length == 0)
+			{
+				if (textLineIndex < numTextLines - 1)
+				{
+					linesWidth[linesNumber - 1] = 0;
+					linesLength[linesNumber - 1] = 0;
+					
+					linesNumber++;
+				}
+				
+				counter++;
+			}
+			
 			var visualRuns = Icu.getVisualRuns(textLine, (direction == TextDirection.LeftToRight));
 			var numVisualRuns = visualRuns.length;
 			
@@ -404,18 +395,12 @@ class OpenflHarfbuzzRenderer
 				}
 			}
 			
-			/*for (run in visualRuns)
-			{
-				trace("[start: " + run.start + ", length: " + run.length + ", direction: " + run.direction + "]");
-				trace("[" + Utf8.sub(textLine, run.start, run.length) + "]");
-			}*/
-			
 			for (run in visualRuns)
 			{
 				var runDirection:TextDirection = (run.direction == 0) ? TextDirection.LeftToRight : TextDirection.RightToLeft;
 				var runWords = splitText(charCodes, run.start + counter, run.length);
 				
-				// TODO (Zaphod): continue from here...
+				colorIndex = run.start + counter;
 				
 				if (runDirection == TextDirection.LeftToRight && direction == TextDirection.RightToLeft)
 				{
@@ -432,15 +417,12 @@ class OpenflHarfbuzzRenderer
 						
 						if (isEndOfLine(tempXpos, wordWidth, fieldWidth))
 						{
-						//	var delta = popSpaces(line);
-							
 							line = [];
 							lines.push(line);
 							tempXpos = xPosBase;
 							
 							if (StringTools.isSpace(word, 0)) 
 							{
-						//		deltaLength[deltaLength.length - 1] += 1;
 								continue;
 							}
 						}
@@ -450,9 +432,7 @@ class OpenflHarfbuzzRenderer
 						tempXpos -= wordWidth;
 						
 						if (isEndOfLine(tempXpos, wordWidth, fieldWidth))
-						{	
-						//	popSpaces(line);
-							
+						{
 							line = [];
 							lines.push(line);
 							
@@ -463,8 +443,6 @@ class OpenflHarfbuzzRenderer
 					for (i in 0...lines.length)
 					{
 						var lineText = lines[i].join("");
-					//	var delta = deltaLength[i];
-						
 						var renderedLine = OpenflHarbuzzCFFI.layoutText(face, OpenflHarbuzzCFFI.createBuffer(runDirection, script, language, lineText));
 						var renderedWidth = layoutWidth(renderedLine, fontScale, letterSpacing);
 					
@@ -482,8 +460,6 @@ class OpenflHarfbuzzRenderer
 						}
 						
 						pushToRenderList(lineText, renderedLine, renderedWidth);
-						
-					//	colorIndex += delta;
 					}
 				}
 				else
