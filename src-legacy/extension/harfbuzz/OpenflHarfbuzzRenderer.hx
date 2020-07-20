@@ -406,7 +406,6 @@ class OpenflHarfbuzzRenderer
 				{
 					var line:Array<String> = [];
 					var lines = [];
-				//	lines.push(line);
 					
 					var tempXpos:Float = xPosBase;
 					
@@ -423,6 +422,7 @@ class OpenflHarfbuzzRenderer
 							
 							if (StringTools.isSpace(word, 0)) 
 							{
+								colorIndex++;
 								continue;
 							}
 						}
