@@ -398,7 +398,7 @@ class OpenflHarfbuzzRenderer
 			for (run in visualRuns)
 			{
 				var runDirection:TextDirection = (run.direction == 0) ? TextDirection.LeftToRight : TextDirection.RightToLeft;
-				var runWords = splitText(charCodes, run.start + counter, run.length);
+				var runWords = splitText(charCodes, run.start, run.length);
 				
 				colorIndex = run.start + counter;
 				
@@ -501,7 +501,16 @@ class OpenflHarfbuzzRenderer
 			
 			if (textLineIndex < numTextLines - 1)
 			{
+				linesWidth[linesNumber - 1] = lineWidth;
+				linesLength[linesNumber - 1] = lineLength;
+			
+				lineWidth = 0;
+				lineLength = 0;
+				
 				linesNumber++;
+				
+				xPosBase = lineXStart;
+				yPosBase = linesNumber * lineHeight * fontScale;
 			}
 			
 			counter++;
