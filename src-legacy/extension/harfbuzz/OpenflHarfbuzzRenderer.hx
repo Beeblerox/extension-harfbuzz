@@ -50,6 +50,10 @@ class OpenflHarfbuzzRenderer
 	
 	public var renderer(default, null):TilesRenderer;
 	
+	private var originalDirection:TextDirection;
+	private var originalScript:TextScript;
+	private var originalLanguage:String;
+	
 	public function new(
 			fontName:String,	// Font path or Openfl Asset ID
 			textSize:Int,
@@ -74,6 +78,10 @@ class OpenflHarfbuzzRenderer
 
 		this.language = language;
 		this.lineHeight = textSize;
+		
+		originalDirection = direction;
+		originalScript = script;
+		originalLanguage = language;
 
 		if (!harfbuzzIsInited) 
 		{
@@ -107,6 +115,20 @@ class OpenflHarfbuzzRenderer
 
 		renderer = null;
 		face = null;
+	}
+	
+	public function reset(language:String, script:TextScript, direction:TextDirection)
+	{
+		this.language = language;
+		this.script = script;
+		this.direction = direction;
+	}
+	
+	public function restore()
+	{
+		this.direction = originalDirection;
+		this.script = originalScript;
+		this.language = originalLanguage;
 	}
 
 	function createBuffer(text:String):HBBuffer 
