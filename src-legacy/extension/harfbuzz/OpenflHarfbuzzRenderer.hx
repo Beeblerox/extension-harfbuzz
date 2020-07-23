@@ -30,33 +30,6 @@ class RenderData
 	}
 }
 
-@:publicFields
-class ChunkGroup
-{
-	var direction:TextDirection;
-	var chunks:Array<TextChunk> = [];
-	
-	function new()
-	{
-		
-	}
-}
-
-@:publicFields
-class TextChunk
-{
-	var start:Int;
-	var length:Int = 0;
-	var script:TextScript;
-	
-	var width:Float = 0.0;
-	
-	function new()
-	{
-		
-	}
-}
-
 class OpenflHarfbuzzRenderer 
 {
 	static dynamic public function getBytes(src:String) 
@@ -76,8 +49,6 @@ class OpenflHarfbuzzRenderer
 	public var lineHeight(default, null):Float;
 	
 	public var renderer(default, null):TilesRenderer;
-	
-	var chunkGroups:Array<ChunkGroup> = [];
 	
 	public function new(
 			fontName:String,	// Font path or Openfl Asset ID
