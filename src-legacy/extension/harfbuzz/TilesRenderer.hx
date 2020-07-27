@@ -41,11 +41,13 @@ class TilesRenderer
 	
 	public function new(glyphData:GlyphData, size:Int = 1024, color:Int = 0x0)
 	{
-		atlasBmp = new BitmapData(size, size);
+		atlasBmp = new BitmapData(size, size, true, 0x0);
 		tilesheet = new Tilesheet(atlasBmp);
 		atlas = new DynamicAtlas(size, size, 2);
 		
-	//	openfl.Lib.current.stage.addChild(new nme.display.Bitmap(atlasBmp));
+		/*var bitmap = new nme.display.Bitmap(atlasBmp);
+		bitmap.x = bitmap.y = 16;
+		openfl.Lib.current.stage.addChild(bitmap);*/
 		
 		glyphs = new Map();
 		glyphIds = new Map();
